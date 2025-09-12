@@ -2,66 +2,41 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Gerador de QR Codes - Estoque</title>
+<title>QR Codes Estoque</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body { font-family: Arial; padding: 20px; text-align: center; background: #f2f2f2; }
-h1 { color: #007bff; }
-#qrcodes { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 20px; }
-.qr-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 150px; }
-.qr-card p { margin-top: 10px; font-weight: bold; font-size: 0.9rem; }
+body{font-family:Arial;padding:20px;text-align:center;background:#f2f2f2;}
+h1{color:#007bff;}
+#qrcodes{display:flex;flex-wrap:wrap;justify-content:center;gap:20px;margin-top:20px;}
+.qr-card{background:white;padding:15px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);width:150px;}
+.qr-card p{margin-top:10px;font-weight:bold;font-size:0.9rem;}
 </style>
 </head>
 <body>
-<h1>Gerador de QR Codes - Estoque</h1>
+<h1>QR Codes Estoque</h1>
 <div id="qrcodes">Carregando...</div>
-
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-ruZpifHI8POPg98c0-vy6R0eJJfJtI4PseDAtkzOfX39UpN4PWMbtIEg7Yv3_XJ-0Q/exec";
-const container = document.getElementById("qrcodes");
-
-async function gerarQRCodes() {
-  try {
-    const resp = await fetch(SCRIPT_URL);
-    const produtos = await resp.json();
-    container.innerHTML = ""; // limpa "Carregando..."
-
-    if (!Array.isArray(produtos) || produtos.length === 0) {
-      container.innerHTML = "Nenhum produto encontrado!";
-      return;
+const SCRIPT_URL = "COLE_AQUI_URL_DO_SEU_WEBAPP";
+const container=document.getElementById("qrcodes");
+async function gerarQRCodes(){
+  try{
+    const resp=await fetch(SCRIPT_URL);
+    const produtos=await resp.json();
+    container.innerHTML="";
+    if(!Array.isArray(produtos)||produtos.length===0){container.innerHTML="Nenhum produto encontrado!"; return;}
+    for(const p of produtos){
+      if(!p.codigo||!p.produto) continue;
+      const card=document.createElement("div"); card.className="qr-card";
+      try{
+        const dataUrl=await QRCode.toDataURL(p.codigo.toString(),{width:120});
+        const img=document.createElement("img"); img.src=dataUrl; img.alt=p.produto; img.style.width="120px"; img.style.height="120px";
+        const label=document.createElement("p"); label.textContent=`${p.codigo} - ${p.produto}`;
+        card.appendChild(img); card.appendChild(label); container.appendChild(card);
+      }catch(err){console.error("Erro QR Code:",p,err);}
     }
-
-    for (const p of produtos) {
-      if (!p.codigo || !p.produto) continue; // ignora dados inválidos
-      const card = document.createElement("div");
-      card.className = "qr-card";
-
-      // Gerar QR Code como data URL
-      try {
-        const dataUrl = await QRCode.toDataURL(p.codigo.toString(), { width: 120 });
-        const img = document.createElement("img");
-        img.src = dataUrl;
-        img.alt = p.produto;
-        img.style.width = "120px";
-        img.style.height = "120px";
-
-        const label = document.createElement("p");
-        label.textContent = `${p.codigo} - ${p.produto}`;
-
-        card.appendChild(img);
-        card.appendChild(label);
-        container.appendChild(card);
-      } catch (err) {
-        console.error("Erro ao gerar QR Code do produto:", p, err);
-      }
-    }
-  } catch (err) {
-    container.innerHTML = "Erro ao buscar produtos do App Script!";
-    console.error(err);
-  }
+  }catch(err){container.innerHTML="Erro ao buscar produtos do App Script!"; console.error(err);}
 }
-
 gerarQRCodes();
 </script>
 </body>
