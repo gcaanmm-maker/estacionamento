@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>QR Codes Estoque1</title>
+<title>QR Codes Estoque</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body{font-family:Arial;padding:20px;text-align:center;background:#f2f2f2;}
@@ -15,28 +15,51 @@ h1{color:#007bff;}
 <body>
 <h1>QR Codes Estoque</h1>
 <div id="qrcodes">Carregando...</div>
+
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-ruZpifHI8POPg98c0-vy6R0eJJfJtI4PseDAtkzOfX39UpN4PWMbtIEg7Yv3_XJ-0Q/exec";
-const container=document.getElementById("qrcodes");
-async function gerarQRCodes(){
-  try{
-    const resp=await fetch(SCRIPT_URL);
-    const produtos=await resp.json();
-    container.innerHTML="";
-    if(!Array.isArray(produtos)||produtos.length===0){container.innerHTML="Nenhum produto encontrado!"; return;}
-    for(const p of produtos){
-      if(!p.codigo||!p.produto) continue;
-      const card=document.createElement("div"); card.className="qr-card";
-      try{
-        const dataUrl=await QRCode.toDataURL(p.codigo.toString(),{width:120});
-        const img=document.createElement("img"); img.src=dataUrl; img.alt=p.produto; img.style.width="120px"; img.style.height="120px";
-        const label=document.createElement("p"); label.textContent=`${p.codigo} - ${p.produto}`;
-        card.appendChild(img); card.appendChild(label); container.appendChild(card);
-      }catch(err){console.error("Erro QR Code:",p,err);}
+const container = document.getElementById("qrcodes");
+
+async function gerarQRCodes() {
+  try {
+    const resp = await fetch(SCRIPT_URL);
+    const produtos = await resp.json();
+    container.innerHTML = "";
+
+    if (!Array.isArray(produtos) || produtos.length === 0) {
+      container.innerHTML = "Nenhum produto encontrado!";
+      return;
     }
-  }catch(err){container.innerHTML="Erro ao buscar produtos do App Script!"; console.error(err);}
+
+    for (const p of produtos) {
+      if (!p.codigo || !p.produto) continue;
+
+      const card = document.createElement("div");
+      card.className = "qr-card";
+
+      // Gerar QR Code com o código do produto
+      const dataUrl = await QRCode.toDataURL(p.codigo.toString(), { width: 120 });
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.alt = p.produto;
+      img.style.width = "120px";
+      img.style.height = "120px";
+
+      const label = document.createElement("p");
+      label.textContent = `${p.codigo} - ${p.produto}`;
+
+      card.appendChild(img);
+      card.appendChild(label);
+      container.appendChild(card);
+    }
+
+  } catch (err) {
+    container.innerHTML = "Erro ao buscar produtos do App Script!";
+    console.error(err);
+  }
 }
+
 gerarQRCodes();
 </script>
 </body>
