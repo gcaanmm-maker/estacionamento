@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Controle de Estoque</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b; --card:#1f2937; --line:#334155; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); background:rgba(17,24,39,.6); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
+    header h1 { font-size:16px; margin:0; color:#c7d2fe; }
+    nav { display:flex; gap:8px; flex-wrap:wrap; }
+    button, .btn { background:#2563eb; color:white; border:0; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; }
+    button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
+    button.warn { background: var(--warn); color:#111; }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    main { max-width:1100px; margin:20px auto; padding:0 16px 40px; display:grid; gap:16px; }
+    section { background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; display:none; }
+    section.active { display:block; }
+    h2 { margin:0 0 12px 0; font-size:18px; color:#bfdbfe; }
+    .row { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
+    .col-3 { grid-column: span 3; } .col-4{ grid-column: span 4; } .col-6{ grid-column: span 6; } .col-8{ grid-column: span 8; } .col-12{ grid-column: span 12; }
+    .card { background: var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+    label { font-size:12px; color: var(--muted); display:block; margin-bottom:6px; }
+    input, select, textarea { width:100%; background:#0b1220; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom:1px solid var(--line); padding:8px; text-align:left; font-size:14px; }
+    th { position:sticky; top:0; background:#0b1220; z-index:1; }
+    .tag { display:inline-block; padding:2px 8px; font-size:11px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+    .ok { color:#16a34a; } .low { color:#f59e0b; } .crit { color:#ef4444; }
+    .pill { background:#0b1220; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; color:var(--muted); }
+    .right { display:flex; gap:8px; align-items:center; }
+    .grid { display:grid; gap:12px; }
+    .scroll { max-height: 420px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+    .hint { color: var(--muted); font-size:12px; }
+    .alert { background: rgba(245, 158, 11, .1); border:1px solid #f59e0b44; padding:10px; border-radius:8px; }
+    footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
+    .hide { display:none; }
+    @media (max-width:800px){ .row { grid-template-columns: repeat(6, 1fr);} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Controle de Estoque</h1>
+    <nav>
+      <button class="ghost" data-nav="login">Login</button>
+      <button class="ghost" data-nav="estoque">Estoque</button>
+      <button class="ghost" data-nav="movimentos">Movimentos</button>
+      <button class="ghost" data-nav="relatorios">Relatórios</button>
+      <button class="ghost" data-nav="usuarios">Usuários</button>
+    </nav>
+    <div class="right">
+      <span id="userBadge" class="pill">Deslogado</span>
+      <button id="logoutBtn" class="ghost">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Login -->
+    <section id="sec-login" class="active">
+      <h2>Login</h2>
+      <div class="row">
+        <div class="col-6 card">
+          <label>Email</label>
+          <input id="loginEmail" type="email" placeholder="email@exemplo.com" />
+          <label>Senha</label>
+          <input id="loginSenha" type="password" placeholder="••••••••" />
+          <div class="right" style="margin-top:10px;">
+            <button id="loginBtn">Entrar</button>
+            <span id="loginMsg" class="hint"></span>
+          </div>
+          <p class="hint" style="margin-top:8px;">Somente administradores podem criar usuários.</p>
+        </div>
+        <div class="col-6 card">
+          <div class="alert">
+            <strong>Importante:</strong> este app usa Google Apps Script como API. Antes de usar substitua a variável GAS_URL pelo URL do Web App publicado.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Estoque -->
+    <section id="sec-estoque">
+      <h2>Estoque</h2>
+      <div class="row">
+        <div class="col-8 card">
+          <div class="right" style="justify-content: space-between;">
+            <input id="busca" placeholder="Buscar por código, produto ou observação..." />
+            <span class="pill">Alerta mínimo: <span id="minDefault">10</span> un</span>
+          </div>
+          <div class="scroll" style="margin-top:10px;">
+            <table id="tabEstoque">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Produto</th>
+                  <th>Qtd</th>
+                  <th>Un</th>
+                  <th>Última saída</th>
+                  <th>Obs.</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-4 grid">
+          <div class="card">
+            <label>Ajuste de estoque</label>
+            <select id="tipoMov">
+              <option value="saida">Saída</option>
+              <option value="entrada">Entrada</option>
+            </select>
+            <label>Código do item</label>
+            <input id="movCodigo" placeholder="Ex.: P001" />
+            <label>Quantidade</label>
+            <input id="movQtd" type="number" min="1" step="1" />
+            <label>Observação</label>
+            <input id="movObs" placeholder="Motivo, local, OS, etc." />
+            <div class="right" style="margin-top:10px;">
+              <button id="btnLancar">Lançar</button>
+              <span id="movMsg" class="hint"></span>
+            </div>
+          </div>
+          <div class="card">
+            <label>Estoque mínimo (por item)</label>
+            <input id="minCod" placeholder="Código (ex.: P001)" />
+            <input id="minVal" type="number" min="0" step="1" placeholder="Valor mínimo" />
+            <div class="right" style="margin-top:10px;">
+              <button id="btnMin">Definir mínimo</button>
+              <span id="minMsg" class="hint"></span>
+            </div>
+            <p class="hint">Se não houver mínimo por item na planilha, usa-se o padrão exibido acima.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Movimentos -->
+    <section id="sec-movimentos">
+      <h2>Movimentos recentes</h2>
+      <div class="row">
+        <div class="col-12 card">
+          <div class="row">
+            <div class="col-3">
+              <label>De</label>
+              <input id="fDe" type="date" />
+            </div>
+            <div class="col-3">
+              <label>Até</label>
+              <input id="fAte" type="date" />
+            </div>
+            <div class="col-3">
+              <label>Usuário</label>
+              <input id="fUser" placeholder="email ou nome" />
+            </div>
+            <div class="col-3">
+              <label>&nbsp;</label>
+              <button id="btnFiltrar">Filtrar</button>
+              <button id="btnCSV" class="ghost">Exportar CSV</button>
+            </div>
+          </div>
+          <div class="scroll" style="margin-top:10px;">
+            <table id="tabMov">
+              <thead>
+                <tr>
+                  <th>Data/Hora</th>
+                  <th>Usuário</th>
+                  <th>Ação</th>
+                  <th>Código</th>
+                  <th>Produto</th>
+                  <th>Qtd</th>
+                  <th>Obs.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Usuários -->
+    <section id="sec-usuarios">
+      <h2>Usuários</h2>
+      <div class="row">
+        <div class="col-6 card">
+          <label>Criar usuário</label>
+          <input id="uEmail" placeholder="email@empresa.com" />
+          <input id="uNome" placeholder="Nome completo" />
+          <input id="uSenha" type="password" placeholder="Senha temporária" />
+          <select id="uPerfil">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+          <div class="right" style="margin-top:10px;">
+            <button id="btnCriarUser">Criar</button>
+            <span id="userMsg" class="hint"></span>
+          </div>
+        </div>
+        <div class="col-6 card">
+          <div class="alert">Somente administradores podem acessar esta aba. Se você não for admin, ela ficará oculta.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relatórios -->
+    <section id="sec-relatorios">
+      <h2>Relatórios</h2>
+      <div class="row">
+        <div class="col-12 card">
+          <p class="hint">Use os filtros de “Movimentos” para gerar relatórios e exporte como CSV. Você também pode consolidar pivot na planilha.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Feito para uso com Google Apps Script + Google Sheets</footer>
+
+  <script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxqacWmoz9OlgbwF9ZHO8Cvo8MRC-ogP_WrptFvohm1Jb7-JbHvXgSzUw4OVnr7w2duSA/exec";
+	    const DEFAULT_MIN = 10;
+    let auth = { token: null, user: null, role: null };
+    let estoque = [];
+    let movimentos = [];
+
+    const qs = (s) => document.querySelector(s);
+    const qsa = (s) => Array.from(document.querySelectorAll(s));
+    function setUserBadge(){ qs("#userBadge").textContent = auth.user ? auth.user+" ("+(auth.role||"")+")" : "Deslogado"; }
+    function guardAdmin(){ if(auth.role==="admin") qs("#sec-usuarios").classList.add("active"); else qs("#sec-usuarios").classList.remove("active"); }
+    function show(section){ qsa("main section").forEach(s=>s.classList.remove("active")); qs("#sec-"+section).classList.add("active"); if(section==="estoque") renderEstoque(); if(section==="movimentos") loadMovimentos(); if(section==="usuarios") guardAdmin(); }
+    function toast(el,msg,ok=false,danger=false){ el.textContent=msg; el.style.color=danger?"#ef4444":(ok?"#22c55e":"#94a3b8"); setTimeout(()=>{el.textContent="";},3500); }
+    function asCSV(rows){ return rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"); }
+    function norm(s){ return (s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase(); }
+
+    async function api(action,data={}){ const payload={action,...data}; const headers={"Content-Type":"application/json"}; if(auth.token) headers["Authorization"]="Bearer "+auth.token; const res=await fetch(GAS_URL,{method:"POST",headers,body:JSON.stringify(payload)}); if(!res.ok) throw new Error("Erro API "+res.status); const json=await res.json(); if(json.error) throw new Error(json.error); return json; }
+
+    qs("#loginBtn").addEventListener("click", async()=>{ const email=qs("#loginEmail").value.trim(); const senha=qs("#loginSenha").value; const msg=qs("#loginMsg"); msg.textContent="Validando..."; try{ const r=await api("login",{email,senha}); auth={token:r.token,user:r.nome||r.email,role:r.perfil||"user"}; localStorage.setItem("auth",JSON.stringify(auth)); setUserBadge(); guardAdmin(); show("estoque"); await loadEstoque(); toast(msg,"Login ok",true);}catch(e){toast(msg,e.message||"Falha no login",false,true);} });
+    qs("#logoutBtn").addEventListener("click",()=>{ auth={token:null,user:null,role:null}; localStorage.removeItem("auth"); setUserBadge(); show("login"); });
+    qsa("[data-nav]").forEach(b=>b.addEventListener("click",()=>{ const t=b.getAttribute("data-nav"); if(t==="usuarios"&&auth.role!=="admin"){alert("Acesso restrito");return;} show(t); }));
+
+    async function loadEstoque(){ try{ const d=await api("listInventory"); estoque=d.items||[]; renderEstoque(); }catch(e){ alert("Erro carregando estoque: "+e.message); } }
+    function renderEstoque(){ const q=norm(qs("#busca").value); const tbody=qs("#tabEstoque tbody"); tbody.innerHTML=""; const minDef=Number(qs("#minDefault").textContent)||DEFAULT_MIN; estoque.filter(it=>{const s=[it.codigo,it.produto,it.obs].join(" "); return !q||norm(s).includes(q);}).forEach(it=>{ const min=it.minimo??minDef; let status=`<span class="tag ok">OK</span>`; if(Number.isFinite(min)){ if(it.qtd<=0) status=`<span class="tag crit">Crítico</span>`; else if(it.qtd<=min) status=`<span class="tag low">Abaixo do mínimo</span>`; } const tr=document.createElement("tr"); tr.innerHTML=`<td>${it.codigo||""}</td><td>${it.produto||""}</td><td>${it.qtd}</td><td>${it.un||""}</td><td>${it.ultima||""}</td><td>${it.obs||""}</td><td>${status}</td>`; tbody.appendChild(tr); }); }
+    qs("#busca").addEventListener("input",renderEstoque);
+
+    qs("#btnLancar").addEventListener("click", async()=>{ const tipo=qs("#tipoMov").value; const codigo=qs("#movCodigo").value.trim(); const qtd=Number(qs("#movQtd").value); const obs=qs("#movObs").value.trim(); const msg=qs("#movMsg"); if(!auth.token) return toast(msg,"Faça login",false,true); if(!codigo||!qtd||qtd<=0) return toast(msg,"Preencha código e quantidade",false,true); try{ await api("adjustStock",{tipo,codigo,qtd,obs}); await loadEstoque(); toast(msg,"Movimento lançado",true);}catch(e){toast(msg,e.message,false,true);} });
+    qs("#btnMin").addEventListener("click", async()=>{ const codigo=qs("#minCod").value.trim(); const min=Number(qs("#minVal").value); const msg=qs("#minMsg"); if(!auth.token) return toast(msg,"Faça login",false,true); if(!codigo||!(min>=0)) return toast(msg,"Código e mínimo válidos",false,true); try{ await api("setMinLevel",{codigo,minimo:min}); const it=estoque.find(x=>x.codigo===codigo); if(it) it.minimo=min; renderEstoque(); toast(msg,"Mínimo atualizado",true);}catch(e){toast(msg,e.message,false,true);} });
+
+    async function loadMovimentos(){ try{ const de=qs("#fDe").value||null; const ate=qs("#fAte").value||null; const usuario=qs("#fUser").value.trim()||null; const r=await api("listMovements",{de,ate,usuario}); movimentos=r.items||[]; renderMov(); }catch(e){movimentos=[];renderMov();} }
+    function renderMov(){ const tbody=qs("#tabMov tbody"); tbody.innerHTML=""; movimentos.forEach(m=>{ const tr=document.createElement("tr"); tr.innerHTML=`<td>${m.dataHora||""}</td><td>${m.usuario||""}</td><td>${m.acao||""}</td><td>${m.codigo||""}</td><td>${m.produto||""}</td><td>${m.qtd??""}</td><td>${m.obs||""}</td>`; tbody.appendChild(tr); }); }
+    qs("#btnFiltrar").addEventListener("click",loadMovimentos);
+    qs("#btnCSV").addEventListener("click",()=>{ const rows=[["Data/Hora","Usuário","Ação","Código","Produto","Qtd","Obs"],...movimentos.map(m=>[m.dataHora,m.usuario,m.acao,m.codigo,m.produto,m.qtd,m.obs])]; const blob=new Blob([asCSV(rows)],{type:"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="movimentos.csv"; a.click(); URL.revokeObjectURL(a.href); });
+
+    qs("#btnCriarUser").addEventListener("click", async()=>{ const email=qs("#uEmail").value.trim(); const nome=qs("#uNome").value.trim(); const senha=qs("#uSenha").value; const perfil=qs("#uPerfil").value; const msg=qs("#userMsg"); if(auth.role!=="admin") return toast(msg,"Apenas admin",false,true); if(!email||!nome||!senha) return toast(msg,"Preencha todos os campos",false,true); try{ await api("createUser",{email,nome,senha,perfil}); qs("#uEmail").value=qs("#uNome").value=qs("#uSenha").value=""; toast(msg,"Usuário criado",true);}catch(e){toast(msg,e.message,false,true);} });
+
+    (async function init(){ const saved=localStorage.getItem("auth"); if(saved){ try{auth=JSON.parse(saved)||auth;}catch{} } setUserBadge(); if(auth.token){ guardAdmin(); await loadEstoque(); show("estoque"); } else show("login"); })();
+  </script>
+</body>
+</html>
