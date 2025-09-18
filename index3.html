@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Controle de Estoque</title>
+  <style>
+    :root { --pri:#2563eb; --pri-700:#1d4ed8; --bg:#f8fafc; --ok:#16a34a; --err:#dc2626; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background: var(--bg); color:#0f172a; }
+    header { background: linear-gradient(90deg, var(--pri), var(--pri-700)); color:#fff; padding:16px 20px; }
+    header h1 { margin:0; font-size:20px; }
+    .container { max-width: 1100px; margin: 16px auto; background:#fff; padding:16px; border-radius:10px; box-shadow: 0 10px 30px rgba(2,6,23,.06); }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .col { flex:1 1 260px; }
+    label { display:block; font-size:12px; color:#475569; margin-bottom:4px; }
+    input, select, textarea { width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; }
+    button { background:var(--pri); color:#fff; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; }
+    button.secondary { background:#334155; }
+    button.ghost { background:#e2e8f0; color:#0f172a; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .tabs { display:flex; gap:8px; border-bottom:1px solid #e2e8f0; margin-bottom:12px; }
+    .tabs button { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; border-bottom:none; border-radius:8px 8px 0 0; padding:8px 12px; }
+    .tabs button.active { background:#fff; color:#111827; border-bottom:1px solid #fff; font-weight:600; }
+    .card { border:1px solid #e2e8f0; border-radius:10px; padding:12px; background:#fff; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; font-size:14px; }
+    th { background:#f8fafc; position:sticky; top:0; }
+    .muted { color:#64748b; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; }
+    .badge.ok { background:#dcfce7; color:#166534; }
+    .badge.warn { background:#fee2e2; color:#991b1b; }
+    .right { text-align:right; }
+    .hidden { display:none; }
+    .footer { font-size:12px; color:#64748b; margin-top:8px; }
+    .danger { color:var(--err); }
+  </style>
+  <!-- QR Scanner -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/html5-qrcode.min.js"></script>
+  <!-- QR Generator for etiquetas -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Controle de Estoque</h1>
+  </header>
+
+  <div class="container" id="loginBox">
+    <h2>Login</h2>
+    <div class="row">
+      <div class="col"><label>E-mail</label><input id="email" type="email" placeholder="voce@empresa.com"/></div>
+      <div class="col"><label>Senha</label><input id="senha" type="password" placeholder="••••••••"/></div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+      <button onclick="entrar()">Entrar</button>
+      <span id="loginMsg" class="muted"></span>
+    </div>
+    <div class="footer">Use o usuário inicial <code>admin@exemplo.com</code> / senha <code>admin123</code> e altere em <strong>Usuarios</strong> na planilha.</div>
+  </div>
+
+  <div class="container hidden" id="appBox">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div>
+        <div class="muted">Autenticado como <span id="userName"></span> (<span id="userEmail"></span>)</div>
+      </div>
+      <div>
+        <button class="ghost" onclick="sair()">Sair</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button id="tabEstoque" class="active" onclick="showTab('estoque')">Estoque</button>
+      <button onclick="showTab('retirada')">Retirada (QR)</button>
+      <button onclick="showTab('relatorio')">Relatórios</button>
+      <button onclick="showTab('config')">Configurações</button>
+    </div>
+
+    <!-- Tab: Estoque -->
+    <section id="tab-estoque">
+      <div class="card">
+        <h3>Cadastro / Atualização de Produto</h3>
+        <div class="row">
+          <div class="col"><label>SKU*</label><input id="p-sku" /></div>
+          <div class="col"><label>Descrição</label><input id="p-desc" /></div>
+          <div class="col"><label>Categoria</label><input id="p-cat" /></div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Local</label><input id="p-local" /></div>
+          <div class="col"><label>Unidade</label><input id="p-un" placeholder="ex: un, cx, kg"/></div>
+          <div class="col"><label>Quantidade</label><input id="p-qtd" type="number" value="0"/></div>
+          <div class="col"><label>Estoque Mínimo</label><input id="p-min" type="number" value="0"/></div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Código (para QR)</label><input id="p-cod" placeholder="se vazio, use o SKU"/></div>
+          <div class="col"><label>Observações</label><input id="p-obs" /></div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button onclick="salvarProduto()">Salvar</button>
+          <span id="prodMsg" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <h3>Estoque Atual</h3>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <input id="filtro" placeholder="Filtrar por SKU/Descrição/Categoria" oninput="renderTabela()" />
+          <button class="ghost" onclick="carregarEstoque()">Atualizar</button>
+        </div>
+        <div style="max-height:380px; overflow:auto;">
+          <table id="tblEstoque">
+            <thead>
+              <tr>
+                <th>SKU</th><th>Descrição</th><th>Categoria</th><th>Local</th><th>UN</th><th class="right">Qtd</th><th class="right">Mín</th><th>QR</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Retirada QR -->
+    <section id="tab-retirada" class="hidden">
+      <div class="card">
+        <h3>Retirada por QR Code</h3>
+        <div class="row">
+          <div class="col"><label>Quantidade por leitura</label><input id="qr-qtd" type="number" value="1"/></div>
+          <div class="col"><label>Observação</label><input id="qr-obs" /></div>
+        </div>
+        <div id="qr-reader" style="width:100%; max-width:520px; margin-top:10px;"></div>
+        <div id="qr-msg" class="muted" style="margin-top:8px;"></div>
+        <div style="margin-top:10px;"><button class="ghost" onclick="toggleScanner()" id="btnToggle">Parar câmera</button></div>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <h3>Últimas leituras</h3>
+        <div id="ultimas"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Relatórios -->
+    <section id="tab-relatorio" class="hidden">
+      <div class="card">
+        <h3>Relatório de Estoque</h3>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <button class="ghost" onclick="downloadCSV()">Baixar CSV</button>
+          <button class="ghost" onclick="gerarEtiquetas()">Gerar Etiquetas QR (selecionados)</button>
+        </div>
+        <div style="max-height:420px; overflow:auto;">
+          <table id="tblRel">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selAll" onchange="toggleAll(this)"/></th>
+                <th>SKU</th><th>Descrição</th><th>Categoria</th><th>Local</th><th>UN</th><th class="right">Qtd</th><th class="right">Mín</th><th>Código</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card hidden" id="etiquetasBox" style="margin-top:12px;">
+        <h3>Etiquetas QR</h3>
+        <div id="etiquetas" class="row"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Config -->
+    <section id="tab-config" class="hidden">
+      <div class="card">
+        <h3>Alertas de Estoque Mínimo</h3>
+        <div class="row">
+          <div class="col"><label>Ativar Alertas (SIM/NÃO)</label><input id="cfg-ativar" placeholder="SIM ou NAO"/></div>
+          <div class="col"><label>E-mail para alerta</label><input id="cfg-email" placeholder="seuemail@empresa.com"/></div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button onclick="salvarConfig()">Salvar Configuração</button>
+          <button class="ghost" onclick="carregarConfig()">Recarregar</button>
+          <button class="secondary" onclick="checarMinimos()">Checar agora</button>
+          <span id="cfgMsg" class="muted"></span>
+        </div>
+        <div class="footer">Para alertas automáticos, crie um gatilho (trigger) do tipo "Time-driven" diário chamando <code>checkMinimos</code> no editor do Apps Script.</div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+let token = localStorage.getItem('estoque_token') || '';
+let usuario = null;
+let dadosEstoque = [];
+let html5Qrcode = null;
+let scannerAtivo = false;
+let ultimas = [];
+
+function entrar(){
+  const email = document.getElementById('email').value.trim();
+  const senha = document.getElementById('senha').value;
+  const ua = navigator.userAgent;
+  document.getElementById('loginMsg').textContent = 'Entrando...';
+  google.script.run.withSuccessHandler(res => {
+    if(res.ok){
+      token = res.token; usuario = res.user; localStorage.setItem('estoque_token', token);
+      document.getElementById('userName').textContent = usuario.nome || 'Usuário';
+      document.getElementById('userEmail').textContent = usuario.email || '';
+      document.getElementById('loginBox').classList.add('hidden');
+      document.getElementById('appBox').classList.remove('hidden');
+      carregarEstoque(); carregarConfig();
+      setTimeout(() => { initScanner(); }, 400);
+    } else {
+      document.getElementById('loginMsg').innerHTML = '<span class="danger">' + (res.message||'Falha no login') + '</span>';
+    }
+  }).login(email, senha, ua);
+}
+
+function sair(){
+  google.script.run.logout(token);
+  localStorage.removeItem('estoque_token'); token = ''; usuario = null;
+  document.getElementById('appBox').classList.add('hidden');
+  document.getElementById('loginBox').classList.remove('hidden');
+}
+
+function showTab(id){
+  ['estoque','retirada','relatorio','config'].forEach(t => {
+    document.getElementById('tab-'+t).classList.add('hidden');
+  });
+  document.getElementById('tab-'+id).classList.remove('hidden');
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  const map = {estoque:0, retirada:1, relatorio:2, config:3};
+  document.querySelectorAll('.tabs button')[map[id]].classList.add('active');
+  if(id==='retirada') initScanner(); else stopScanner();
+  if(id==='relatorio') renderRelatorio();
+}
+
+function carregarEstoque(){
+  google.script.run.withSuccessHandler(rows => { dadosEstoque = rows; renderTabela(); renderRelatorio(); }).getEstoque(token);
+}
+
+function renderTabela(){
+  const filtro = (document.getElementById('filtro').value||'').toLowerCase();
+  const tb = document.querySelector('#tblEstoque tbody'); tb.innerHTML = '';
+  dadosEstoque
+    .filter(r => !filtro || [r['SKU'], r['Descricao'], r['Categoria']].some(x => String(x||'').toLowerCase().includes(filtro)))
+    .forEach(r => {
+      const tr = document.createElement('tr');
+      const qtd = Number(r['Quantidade']||0), min = Number(r['Minimo']||0);
+      const badge = qtd <= min ? '<span class="badge warn">Baixo</span>' : '<span class="badge ok">OK</span>';
+      tr.innerHTML = `
+        <td>${r['SKU']||''}</td>
+        <td>${r['Descricao']||''}</td>
+        <td>${r['Categoria']||''}</td>
+        <td>${r['Local']||''}</td>
+        <td>${r['Unidade']||''}</td>
+        <td class="right">${qtd} ${badge}</td>
+        <td class="right">${min}</td>
+        <td><button class="ghost" onclick="gerarQRInline('${(r['Codigo']||r['SKU']||'').toString().replace(/"/g,'\"')}')">QR</button></td>`;
+      tb.appendChild(tr);
+    });
+}
+
+function salvarProduto(){
+  const obj = {
+    'SKU': document.getElementById('p-sku').value.trim(),
+    'Descricao': document.getElementById('p-desc').value,
+    'Categoria': document.getElementById('p-cat').value,
+    'Local': document.getElementById('p-local').value,
+    'Unidade': document.getElementById('p-un').value,
+    'Quantidade': Number(document.getElementById('p-qtd').value||0),
+    'Minimo': Number(document.getElementById('p-min').value||0),
+    'Codigo': document.getElementById('p-cod').value,
+    'Observacoes': document.getElementById('p-obs').value
+  };
+  document.getElementById('prodMsg').textContent = 'Salvando...';
+  google.script.run.withSuccessHandler(res => {
+    document.getElementById('prodMsg').textContent = 'Salvo!';
+    carregarEstoque();
+    setTimeout(()=>document.getElementById('prodMsg').textContent='', 1500);
+  }).withFailureHandler(err => {
+    document.getElementById('prodMsg').innerHTML = '<span class="danger">' + err.message + '</span>';
+  }).saveProduto(token, obj);
+}
+
+function initScanner(){
+  if (scannerAtivo) return;
+  const el = document.getElementById('qr-reader');
+  if (!el) return;
+  try {
+    html5Qrcode = new Html5Qrcode('qr-reader');
+    const config = { fps:10, qrbox:{width:250, height:250} };
+    html5Qrcode.start({ facingMode: 'environment' }, config, onScanSuccess, onScanError)
+      .then(()=>{ scannerAtivo = true; document.getElementById('btnToggle').textContent='Parar câmera'; })
+      .catch(err=>{ document.getElementById('qr-msg').innerHTML = '<span class="danger">'+err+'</span>'; });
+  } catch(e){ document.getElementById('qr-msg').innerHTML = '<span class="danger">Falha ao iniciar câmera</span>'; }
+}
+
+function stopScanner(){
+  if (html5Qrcode && scannerAtivo){ html5Qrcode.stop().then(()=>{ html5Qrcode.clear(); scannerAtivo=false; document.getElementById('btnToggle').textContent='Iniciar câmera'; }); }
+}
+
+function toggleScanner(){ if (scannerAtivo) stopScanner(); else initScanner(); }
+
+function onScanSuccess(decodedText, decodedResult){
+  const qtd = Number(document.getElementById('qr-qtd').value||1);
+  const obs = document.getElementById('qr-obs').value||'';
+  document.getElementById('qr-msg').textContent = 'Lido: ' + decodedText + ' • processando...';
+  google.script.run.withSuccessHandler(res => {
+    document.getElementById('qr-msg').textContent = 'Retirada registrada. SKU '+res.sku+' • Qtd atual: '+res.quantidade;
+    ultimas.unshift({codigo: decodedText, quando: new Date().toLocaleString(), ok:true});
+    ultimas = ultimas.slice(0,6);
+    renderUltimas();
+    carregarEstoque();
+  }).withFailureHandler(err => {
+    document.getElementById('qr-msg').innerHTML = '<span class="danger">Erro: '+err.message+'</span>';
+    ultimas.unshift({codigo: decodedText, quando: new Date().toLocaleString(), ok:false});
+    ultimas = ultimas.slice(0,6);
+    renderUltimas();
+  }).retiradaPorQRCode(token, decodedText, qtd, obs);
+}
+
+function onScanError(err){ /* opcional: exibir erros */ }
+
+function renderUltimas(){
+  const box = document.getElementById('ultimas');
+  box.innerHTML = ultimas.map(u => `<div>${u.quando} — ${u.codigo} ${u.ok?'<span class=badge ok>OK</span>':'<span class=badge warn>ERRO</span>'}</div>`).join('');
+}
+
+function renderRelatorio(){
+  const tb = document.querySelector('#tblRel tbody'); tb.innerHTML='';
+  dadosEstoque.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type=\"checkbox\" data-sku=\"${(r['SKU']||'').toString().replace(/"/g,'\\"')}\" data-code=\"${(r['Codigo']||r['SKU']||'').toString().replace(/"/g,'\\"')}\"></td>
+      <td>${r['SKU']||''}</td>
+      <td>${r['Descricao']||''}</td>
+      <td>${r['Categoria']||''}</td>
+      <td>${r['Local']||''}</td>
+      <td>${r['Unidade']||''}</td>
+      <td class="right">${Number(r['Quantidade']||0)}</td>
+      <td class="right">${Number(r['Minimo']||0)}</td>
+      <td>${r['Codigo']||r['SKU']||''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function toggleAll(cb){
+  document.querySelectorAll('#tblRel tbody input[type=checkbox]').forEach(x => x.checked = cb.checked);
+}
+
+function downloadCSV(){
+  const header = ['SKU','Descricao','Categoria','Local','Unidade','Quantidade','Minimo','Codigo'];
+  const linhas = [header.join(',')].concat(dadosEstoque.map(r => header.map(h => '"'+String(r[h]||'').replaceAll('"','""')+'"').join(',')));
+  const blob = new Blob([linhas.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='relatorio_estoque.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+function gerarEtiquetas(){
+  const sel = [...document.querySelectorAll('#tblRel tbody input[type=checkbox]:checked')]
+    .map(x=>({ sku:x.dataset.sku, code:x.dataset.code }));
+  const box = document.getElementById('etiquetasBox');
+  const cont = document.getElementById('etiquetas');
+  cont.innerHTML='';
+  if(!sel.length){ box.classList.add('hidden'); return; }
+  sel.forEach(it => {
+    const d = document.createElement('div'); d.className='col'; d.style.border='1px dashed #cbd5e1'; d.style.padding='8px'; d.style.borderRadius='8px';
+    d.innerHTML = `<div style='font-weight:600'>${it.sku}</div><div id='qr-${it.sku}'></div>`;
+    cont.appendChild(d);
+    const qrdiv = d.querySelector('#qr-'+CSS.escape(it.sku));
+    new QRCode(qrdiv, { text: it.code || it.sku, width: 128, height:128 });
+  });
+  box.classList.remove('hidden');
+}
+
+function gerarQRInline(code){
+  const w = window.open('', '_blank');
+  w.document.write('<html><head><title>QR</title></head><body style="font-family:Arial; text-align:center">');
+  w.document.write('<h3>QR Code</h3><div id="q"></div><div>'+code+'</div>');
+  w.document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>');
+  w.document.write('<script>new QRCode(document.getElementById("q"), {text: '+JSON.stringify(code)+', width:256, height:256});<\/script>');
+  w.document.write('</body></html>');
+  w.document.close();
+}
+
+function carregarConfig(){
+  google.script.run.withSuccessHandler(cfg => {
+    document.getElementById('cfg-ativar').value = (cfg['AtivarAlertas']||'');
+    document.getElementById('cfg-email').value = (cfg['AlertaEmail']||'');
+  }).getConfig();
+}
+
+function salvarConfig(){
+  const cfg = { 'AtivarAlertas': document.getElementById('cfg-ativar').value.trim(), 'AlertaEmail': document.getElementById('cfg-email').value.trim() };
+  document.getElementById('cfgMsg').textContent = 'Salvando...';
+  google.script.run.withSuccessHandler(()=>{ document.getElementById('cfgMsg').textContent='OK'; setTimeout(()=>document.getElementById('cfgMsg').textContent='',1200); })
+    .withFailureHandler(err=>{ document.getElementById('cfgMsg').innerHTML='<span class=danger>'+err.message+'</span>'; })
+    .setConfig(token, cfg);
+}
+
+function checarMinimos(){
+  google.script.run.withSuccessHandler(res => {
+    if(res.itens && res.itens.length){
+      alert('Itens abaixo do mínimo:\n' + res.itens.map(i=>`${i.sku} (${i.quantidade}/${i.minimo})`).join('\n'));
+    } else { alert('Tudo OK. Nenhum item abaixo do mínimo.'); }
+  }).checkMinimos();
+}
+</script>
+</body>
+</html>
