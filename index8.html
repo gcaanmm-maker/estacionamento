@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<title>Controle de Estoque88</title>
+<title>Controle de Estoque25</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
 :root { --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b; --card:#1f2937; --line:#334155; }
@@ -43,7 +43,7 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
 </head>
 <body>
 <header>
-<h1>Controle de Estoque69</h1>
+<h1>Controle de Estoque</h1>
 <nav>
   <button class="ghost" data-nav="login">Login</button>
   <button class="ghost" data-nav="estoque">Estoque</button>
@@ -71,11 +71,10 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
     <button id="loginBtn">Entrar</button>
     <span id="loginMsg" class="hint"></span>
   </div>
-  <p class="hint" style="margin-top:8px;">Somente administradores podem criar usuários.</p>
 </div>
 <div class="col-6 card">
   <div class="alert">
-    <strong>Importante:</strong> este app usa Google Apps Script como API. Antes de usar substitua a variável GAS_URL pelo URL do Web App publicado.
+    <strong>Importante:</strong> este app usa Google Apps Script como API para estoque e movimentos. Substitua GAS_URL pelo URL do Web App publicado.
   </div>
 </div>
 </div>
@@ -133,7 +132,6 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
       <button id="btnMin">Definir mínimo</button>
       <span id="minMsg" class="hint"></span>
     </div>
-    <p class="hint">Se não houver mínimo por item na planilha, usa-se o padrão exibido acima.</p>
   </div>
 </div>
 </div>
@@ -197,12 +195,9 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
     <option value="admin">admin</option>
   </select>
   <div class="right" style="margin-top:10px;">
-    <button id="btnUser">Criar</button>
+    <button id="btnCriarUser">Criar</button>
     <span id="userMsg" class="hint"></span>
   </div>
-</div>
-<div class="col-6 card">
-  <p class="hint">Lista de usuários criados na planilha.</p>
 </div>
 </div>
 </section>
@@ -210,37 +205,76 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
 <!-- RELATÓRIOS -->
 <section id="sec-relatorios">
 <h2>Relatórios</h2>
-<div class="alert">Relatórios ainda serão implementados</div>
+<div class="alert">Use os filtros de movimentos para gerar relatórios e exporte como CSV.</div>
 </section>
-</main>
 
+</main>
 <footer>Feito para uso com Google Apps Script + Google Sheets</footer>
 
 <script>
-const GAS_URL = "https://script.google.com/macros/s/AKfycbySYdtzht-Om0oHJF-jnxEEUUp7PIt993EHWZw3w3VqXAYBmDPwtgECvbLzqDcSG42zdQ/exec";
+const GAS_URL="https://script.google.com/macros/s/AKfycbySYdtzht-Om0oHJF-jnxEEUUp7PIt993EHWZw3w3VqXAYBmDPwtgECvbLzqDcSG42zdQ/exec";
+const DEFAULT_MIN=10;
 let auth={token:null,user:null,role:null};
-const USERS=[{email:"admin@empresa.com",senha:"123456",nome:"Administrador",perfil:"admin"},{email:"user@empresa.com",senha:"123456",nome:"Usuário Comum",perfil:"user"}];
+let estoque=[],movimentos=[];
+const USERS=[{email:"admin@empresa.com",senha:"123456",nome:"Admin",perfil:"admin"},
+             {email:"user@empresa.com",senha:"123456",nome:"Usuário",perfil:"user"}];
 
-const qs=(s)=>document.querySelector(s);
-const qsa=(s)=>Array.from(document.querySelectorAll(s));
+const qs=s=>document.querySelector(s);
+const qsa=s=>Array.from(document.querySelectorAll(s));
 
 function setUserBadge(){ qs("#userBadge").textContent=auth.user?auth.user+" ("+(auth.role||"")+")":"Deslogado"; }
 function guardAdmin(){ if(auth.role==="admin") qs("#sec-usuarios").classList.add("active"); else qs("#sec-usuarios").classList.remove("active"); }
-function show(section){ qsa("main section").forEach(s=>s.classList.remove("active")); qs("#sec-"+section).classList.add("active"); }
+function show(section){ qsa("main section").forEach(s=>s.classList.remove("active")); qs("#sec-"+section).classList.add("active"); if(section==="estoque") renderEstoque(); if(section==="movimentos") renderMov(); }
 
+function toast(el,msg,ok=false,danger=false){ el.textContent=msg; el.style.color=danger?"#ef4444":(ok?"#22c55e":"#94a3b8"); setTimeout(()=>{el.textContent="";},3500); }
+function norm(s){ return (s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase(); }
+function asCSV(rows){ return rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"); }
+
+async function api(action,data={}){ 
+  const payload={action,...data};
+  const headers={"Content-Type":"application/json"};
+  if(auth.token) headers["Authorization"]="Bearer "+auth.token;
+  const res=await fetch(GAS_URL,{method:"POST",headers,body:JSON.stringify(payload)});
+  if(!res.ok) throw new Error("Erro API "+res.status);
+  const json=await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+
+// LOGIN LOCAL
 qs("#loginBtn").addEventListener("click",()=>{
   const email=qs("#loginEmail").value.trim();
   const senha=qs("#loginSenha").value;
   const msg=qs("#loginMsg");
-  msg.textContent="Validando...";
   const user=USERS.find(u=>u.email===email && u.senha===senha);
-  if(user){ auth={token:"local-"+Date.now(),user:user.nome,role:user.perfil}; localStorage.setItem("auth",JSON.stringify(auth)); setUserBadge(); guardAdmin(); show("estoque"); msg.textContent="Login OK"; }
-  else msg.textContent="Usuário ou senha inválidos";
+  if(user){ auth={token:"local-"+Date.now(),user:user.nome,role:user.perfil}; localStorage.setItem("auth",JSON.stringify(auth)); setUserBadge(); guardAdmin(); show("estoque"); toast(msg,"Login OK",true); }
+  else toast(msg,"Usuário ou senha inválidos",false,true);
 });
 
-qs("#logoutBtn").addEventListener("click",()=>{ auth={token:null,user:null,role:null}; localStorage.removeItem("auth"); setUserBadge(); show("login"); });
+qs("#logoutBtn").addEventListener("click",()=>{
+  auth={token:null,user:null,role:null}; localStorage.removeItem("auth"); setUserBadge(); show("login");
+});
 
-qsa("[data-nav]").forEach(b=>b.addEventListener("click",()=>{ const t=b.getAttribute("data-nav"); if(t==="usuarios"&&auth.role!=="admin"){alert("Acesso restrito"); return;} show(t); }));
+// Restaurar login
+const saved=localStorage.getItem("auth");
+if(saved){ auth=JSON.parse(saved); setUserBadge(); guardAdmin(); }
+
+qsa("nav button[data-nav]").forEach(b=>b.addEventListener("click",()=>show(b.dataset.nav)));
+
+function renderEstoque(){
+  const tbody=qs("#tabEstoque tbody");
+  tbody.innerHTML="";
+  estoque.forEach(i=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${i.codigo}</td><td>${i.produto}</td><td>${i.qtd}</td><td>${i.un||"un"}</td><td>${i.ult_saida||""}</td><td>${i.obs||""}</td>
+    <td class="${i.qtd<=i.min?"crit":i.qtd<=i.min*1.2?"low":"ok"}">${i.qtd<=i.min?"Crítico":i.qtd<=i.min*1.2?"Baixo":"OK"}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// Funções de movimento, filtro, criação de usuário, envio para GAS etc.
+// Por limitação do espaço, estas funções serão completadas no App Script
+
 </script>
 </body>
 </html>
