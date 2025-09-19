@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>App Mobile de Retirada</title>
+<title>App Mobile de Retirada2 (Híbrido)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 :root {
@@ -22,16 +22,19 @@ button.action:disabled { opacity:.6; cursor:not-allowed; }
 table { width:100%; border-collapse: collapse; font-size:14px; }
 th, td { padding:8px; border-bottom:1px solid var(--line); text-align:left; }
 th { background:#1e293b; color:#e2e8f0; position:sticky; top:0; }
-#preview { width:100%; border-radius:8px; background:#000; margin-bottom:8px; }
-#cameraStatus { color: var(--warn); font-size:12px; text-align:center; }
+#preview { width:100%; height:300px; border-radius:8px; display:none; background:#000; object-fit:cover; }
+#cameraStatus { color: var(--warn); font-size:12px; text-align:center; margin-bottom:8px; }
 </style>
 </head>
 <body>
-<header><h1>App Mobile de Retirada</h1></header>
+<header><h1>App Mobile de Retirada (Híbrido)</h1></header>
 <main>
-<label>Escanear QR Code do Produto</label>
-<video id="preview"></video>
-<div id="cameraStatus">Câmera não iniciada</div>
+
+<div id="cameraContainer">
+  <label>Escanear QR Code do Produto</label>
+  <video id="preview"></video>
+  <div id="cameraStatus">Tentando acessar câmera...</div>
+</div>
 
 <label>Produto</label>
 <select id="produtoSelect"><option value="">Selecione um produto</option></select>
@@ -51,7 +54,6 @@ th { background:#1e293b; color:#e2e8f0; position:sticky; top:0; }
   <tbody></tbody>
 </table>
 </div>
-</main>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script>
@@ -61,7 +63,7 @@ let estoque = [];
 // Carregar estoque
 async function fetchStock(){
   try{
-    const res = await fetch(WEBAPP_URL,{method:"POST", body:JSON.stringify({action:"listStock"})});
+    const res = await fetch(WEBAPP_URL,{method:"POST",body:JSON.stringify({action:"listStock"})});
     const data = await res.json();
     if(data.success){
       estoque = data.data;
@@ -79,6 +81,7 @@ async function fetchStock(){
     }
   }catch(e){
     console.error("Erro ao carregar estoque:", e);
+    document.getElementById("cameraStatus").textContent = "Erro ao carregar estoque.";
   }
 }
 
@@ -88,7 +91,7 @@ async function registrarRetirada(codigoManual){
   const quantidade = Number(document.getElementById("quantidade").value);
   const responsavel = document.getElementById("responsavel").value;
   if(!codigo || !quantidade || !responsavel){
-    alert("Preencha todos os campos");
+    alert("Preencha todos os campos!");
     return;
   }
   try{
@@ -103,30 +106,51 @@ async function registrarRetirada(codigoManual){
       document.getElementById("quantidade").value="";
       document.getElementById("responsavel").value="";
     } else alert("Erro: "+data.error);
-  }catch(e){ alert("Erro ao registrar retirada: "+e.message);}
+  }catch(e){
+    alert("Erro ao registrar retirada: "+e.message);
+  }
 }
 
 document.getElementById("btnRetirada").onclick = ()=>registrarRetirada();
 
-// Configurar scanner
+// Configurar scanner híbrido
 function startScanner(){
+  const previewElem = document.getElementById("preview");
+  const statusElem = document.getElementById("cameraStatus");
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    statusElem.textContent = "Câmera não disponível. Use modo manual.";
+    previewElem.style.display = "none";
+    return;
+  }
+
   const html5QrCode = new Html5Qrcode("preview");
   Html5Qrcode.getCameras().then(cameras=>{
     if(cameras && cameras.length){
-      document.getElementById("cameraStatus").textContent = "Câmera ativa";
-      html5QrCode.start(cameras[0].id, {fps:10, qrbox:250}, qrCodeMessage=>{
-        const produto = estoque.find(p=>p.codigo===qrCodeMessage);
-        if(produto){
-          document.getElementById("produtoSelect").value = produto.codigo;
-          registrarRetirada(produto.codigo); // registra automaticamente
-        }
-      }).catch(err=>{
-        document.getElementById("cameraStatus").textContent = "Não foi possível iniciar a câmera.";
+      previewElem.style.display = "block";
+      html5QrCode.start(
+        cameras[0].id,
+        { fps:10, qrbox:250 },
+        qrCodeMessage=>{
+          const produto = estoque.find(p=>p.codigo===qrCodeMessage);
+          if(produto){
+            document.getElementById("produtoSelect").value = produto.codigo;
+            registrarRetirada(produto.codigo);
+          }
+        },
+        err=>{} // erros de scan ignorados
+      ).catch(err=>{
+        statusElem.textContent = "Não foi possível iniciar a câmera. Use modo manual.";
+        previewElem.style.display = "none";
         console.error(err);
       });
-    } else document.getElementById("cameraStatus").textContent = "Nenhuma câmera encontrada.";
+    } else {
+      statusElem.textContent = "Nenhuma câmera encontrada. Use modo manual.";
+      previewElem.style.display = "none";
+    }
   }).catch(err=>{
-    document.getElementById("cameraStatus").textContent = "Erro ao acessar câmera.";
+    statusElem.textContent = "Erro ao acessar câmera. Use modo manual.";
+    previewElem.style.display = "none";
     console.error(err);
   });
 }
