@@ -2,45 +2,114 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Login - Controle de Estoque2</title>
+  <title>Controle de Estoque15</title>
   <style>
-    body { font-family: Arial; display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f2f5; }
-    .box { background:#fff; padding:30px; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.1); width:300px; }
-    h2 { text-align:center; margin-bottom:20px; }
-    input { width:100%; padding:10px; margin:8px 0; border-radius:5px; border:1px solid #ccc; }
-    button { width:100%; padding:10px; margin-top:12px; border:none; background:#2563eb; color:#fff; border-radius:5px; cursor:pointer; }
-    .msg { color:#ef4444; margin-top:10px; text-align:center; }
+    body{font-family:Arial; background:#f4f4f4; padding:20px;}
+    .box{background:white;padding:20px;border-radius:8px; max-width:400px;margin:40px auto; box-shadow:0 0 10px rgba(0,0,0,.2);}
+    input, select, button{width:100%; padding:10px; margin:5px 0;border-radius:4px; border:1px solid #ccc;}
+    button{background:#2563eb;color:white; border:none; cursor:pointer;}
+    table{width:100%; border-collapse:collapse; margin-top:10px;}
+    th,td{border:1px solid #ccc; padding:6px;}
   </style>
 </head>
 <body>
-  <div class="box">
-    <h2>Login</h2>
-    <input type="email" id="email" placeholder="Email">
-    <input type="password" id="senha" placeholder="Senha">
-    <button onclick="fazerLogin()">Entrar</button>
-    <div class="msg" id="msg"></div>
-  </div>
 
-  <script>
-    function fazerLogin() {
-      const email = document.getElementById('email').value.trim();
-      const senha = document.getElementById('senha').value.trim();
-      const msg = document.getElementById('msg');
-      msg.textContent = "Validando...";
+<div class="box" id="loginBox">
+  <h2>Login</h2>
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="senha" placeholder="Senha">
+  <button id="btnLogin">Entrar</button>
+  <p id="msg" style="color:red;"></p>
+</div>
 
-      google.script.run.withSuccessHandler(function(res){
-        if(res.success){
-          // Abrir dashboard
-          google.script.run.withSuccessHandler(function(html){
-            document.open();
-            document.write(html.getContent());
-            document.close();
-          }).openDashboard();
-        } else {
-          msg.textContent = res.error;
-        }
-      }).login(email, senha);
-    }
-  </script>
+<div class="box" id="mainBox" style="display:none;">
+  <h2>Bem-vindo <span id="userName"></span></h2>
+  <button id="logoutBtn">Sair</button>
+  <h3>Estoque</h3>
+  <table id="tabEstoque">
+    <thead><tr><th>Código</th><th>Produto</th><th>Qtd</th><th>Un</th><th>Última</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>Movimento</h3>
+  <select id="tipoMov">
+    <option value="entrada">Entrada</option>
+    <option value="saida">Saída</option>
+  </select>
+  <input id="movCodigo" placeholder="Código do item">
+  <input id="movQtd" type="number" placeholder="Quantidade">
+  <input id="movObs" placeholder="Observação">
+  <button id="btnLancar">Lançar</button>
+  <p id="movMsg" style="color:green;"></p>
+</div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/SEU_LINK_DO_WEBAPP/exec";
+let auth = null;
+
+async function api(action, data={}) {
+  const res = await fetch(GAS_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action,...data})
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+
+document.getElementById("btnLogin").onclick = async ()=>{
+  const email=document.getElementById("email").value;
+  const senha=document.getElementById("senha").value;
+  const msg=document.getElementById("msg");
+  msg.textContent="Validando...";
+  try{
+    const r = await api("login",{email,senha});
+    auth = r;
+    localStorage.setItem("auth",JSON.stringify(auth));
+    showMain();
+  } catch(e){ msg.textContent=e.message; }
+};
+
+function showMain(){
+  document.getElementById("loginBox").style.display="none";
+  document.getElementById("mainBox").style.display="block";
+  document.getElementById("userName").textContent = auth.nome;
+  loadEstoque();
+}
+
+document.getElementById("logoutBtn").onclick = ()=>{
+  localStorage.removeItem("auth");
+  auth=null;
+  document.getElementById("loginBox").style.display="block";
+  document.getElementById("mainBox").style.display="none";
+};
+
+async function loadEstoque(){
+  try{
+    const data = await api("listInventory");
+    const tbody = document.querySelector("#tabEstoque tbody");
+    tbody.innerHTML="";
+    data.items.forEach(it=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${it.codigo}</td><td>${it.produto}</td><td>${it.qtd}</td><td>${it.un}</td><td>${it.ultima||""}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e){ console.error(e); }
+}
+
+document.getElementById("btnLancar").onclick=async()=>{
+  const tipo=document.getElementById("tipoMov").value;
+  const codigo=document.getElementById("movCodigo").value;
+  const qtd=Number(document.getElementById("movQtd").value);
+  const obs=document.getElementById("movObs").value;
+  const msg=document.getElementById("movMsg");
+  try{
+    await api("adjustStock",{tipo,codigo,qtd,obs,usuario:auth.email});
+    msg.textContent="Movimento registrado!";
+    loadEstoque();
+  } catch(e){ msg.textContent=e.message; }
+};
+</script>
+
 </body>
 </html>
