@@ -1,101 +1,56 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
   <title>Controle de Estoque</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { margin:0; font-family: Arial, sans-serif; background:#0f172a; color:#e5e7eb; }
-    header { padding:12px; background:#111827; color:#c7d2fe; text-align:center; }
-    main { max-width:1000px; margin:20px auto; padding:0 16px; }
-    h2 { margin-top:20px; color:#bfdbfe; }
-    table { width:100%; border-collapse: collapse; margin-top:10px; }
-    th, td { border:1px solid #334155; padding:6px; }
-    th { background:#1f2937; position:sticky; top:0; }
-    input, select, button { padding:6px; border-radius:6px; border:1px solid #334155; margin:4px 0; }
-    button { background:#2563eb; color:white; cursor:pointer; }
-  </style>
 </head>
 <body>
-  <header><h1>Controle de Estoque</h1></header>
-  <main>
-    <h2>Estoque</h2>
-    <input id="busca" placeholder="Buscar..." />
-    <table id="tabEstoque">
-      <thead><tr><th>Código</th><th>Produto</th><th>Qtd</th><th>Un</th><th>Última saída</th><th>Obs</th><th>Mínimo</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <h2>Controle de Estoque</h2>
 
-    <h2>Lançar Movimento</h2>
-    <select id="tipoMov">
-      <option value="entrada">Entrada</option>
-      <option value="saida">Saída</option>
-    </select>
-    <input id="movCodigo" placeholder="Código" />
-    <input id="movQtd" type="number" min="1" />
-    <input id="movObs" placeholder="Observação" />
-    <button id="btnLancar">Lançar</button>
-    <span id="movMsg"></span>
+  <button onclick="listarEstoque()">Listar Estoque</button>
+  <button onclick="listarMovimentos()">Listar Movimentos</button>
 
-    <h2>Movimentos</h2>
-    <table id="tabMov">
-      <thead><tr><th>Data/Hora</th><th>Ação</th><th>Código</th><th>Produto</th><th>Qtd</th><th>Obs</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </main>
+  <h3>Movimentar Estoque</h3>
+  <input type="text" id="codigo" placeholder="Código do produto">
+  <input type="number" id="quantidade" placeholder="Quantidade">
+  <select id="tipo">
+    <option value="Entrada">Entrada</option>
+    <option value="Saída">Saída</option>
+  </select>
+  <button onclick="ajustarEstoque()">Registrar Movimento</button>
 
-  <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbznjI4fjdIdi9L2hDYZ137bAqG-w_TSM89p1YdkWa8n9y1FtG6vgYJ96gQ9J27CkCTJZA/exec";
+  <pre id="saida"></pre>
 
-    async function api(action,data={}) {
-      const res = await fetch(GAS_URL,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action,...data})
-      });
-      return res.json();
-    }
+<script>
+const api = "https://script.google.com/macros/s/AKfycbznjI4fjdIdi9L2hDYZ137bAqG-w_TSM89p1YdkWa8n9y1FtG6vgYJ96gQ9J27CkCTJZA/exec";
 
-    async function loadEstoque(){
-      const r = await api("listInventory");
-      const q = document.querySelector("#busca").value.toLowerCase();
-      const tbody=document.querySelector("#tabEstoque tbody");
-      tbody.innerHTML="";
-      r.items.filter(it=>!q||it.produto.toLowerCase().includes(q)||it.codigo.toLowerCase().includes(q))
-        .forEach(it=>{
-          const tr=document.createElement("tr");
-          tr.innerHTML=`<td>${it.codigo}</td><td>${it.produto}</td><td>${it.qtd}</td><td>${it.un}</td><td>${it.ultima||""}</td><td>${it.obs||""}</td><td>${it.minimo||""}</td>`;
-          tbody.appendChild(tr);
-        });
-    }
+async function listarEstoque() {
+  const res = await fetch(api, {
+    method: "POST",
+    body: JSON.stringify({ action: "listInventory" })
+  });
+  document.getElementById("saida").textContent = JSON.stringify(await res.json(), null, 2);
+}
 
-    async function loadMov(){
-      const r = await api("listMovements");
-      const tbody=document.querySelector("#tabMov tbody");
-      tbody.innerHTML="";
-      r.items.forEach(m=>{
-        const tr=document.createElement("tr");
-        tr.innerHTML=`<td>${m.dataHora}</td><td>${m.acao}</td><td>${m.codigo}</td><td>${m.produto}</td><td>${m.qtd}</td><td>${m.obs}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
+async function listarMovimentos() {
+  const res = await fetch(api, {
+    method: "POST",
+    body: JSON.stringify({ action: "listMovements" })
+  });
+  document.getElementById("saida").textContent = JSON.stringify(await res.json(), null, 2);
+}
 
-    document.querySelector("#btnLancar").addEventListener("click",async()=>{
-      const tipo=document.querySelector("#tipoMov").value;
-      const codigo=document.querySelector("#movCodigo").value;
-      const qtd=Number(document.querySelector("#movQtd").value);
-      const obs=document.querySelector("#movObs").value;
-      const msg=document.querySelector("#movMsg");
-      try{
-        await api("adjustStock",{tipo,codigo,qtd,obs});
-        msg.textContent="Movimento lançado!";
-        loadEstoque(); loadMov();
-      }catch(e){ msg.textContent="Erro: "+e.message; }
-    });
+async function ajustarEstoque() {
+  const codigo = document.getElementById("codigo").value;
+  const quantidade = parseInt(document.getElementById("quantidade").value);
+  const tipo = document.getElementById("tipo").value;
 
-    document.querySelector("#busca").addEventListener("input",loadEstoque);
-
-    (async()=>{ await api("setup"); await loadEstoque(); await loadMov(); })();
-  </script>
+  const res = await fetch(api, {
+    method: "POST",
+    body: JSON.stringify({ action: "adjustStock", codigo, quantidade, tipo })
+  });
+  document.getElementById("saida").textContent = JSON.stringify(await res.json(), null, 2);
+}
+</script>
 </body>
 </html>
