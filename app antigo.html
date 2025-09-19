@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Controle de Estoque</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: Arial; margin:0; padding:0; background:#f2f2f2; text-align:center; }
+header { background:#007bff; color:white; padding:40px 20px 30px; }
+header h1{margin:0;font-size:1.8rem;}
+main{flex:1; display:flex; flex-direction:column; align-items:center; padding:20px;}
+form{background:white; padding:20px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.1); max-width:400px; width:100%; margin-top:15px;}
+label{display:block; margin:8px 0 4px; text-align:left; font-weight:bold;}
+select,input,button{width:100%; padding:10px; margin-bottom:12px; border-radius:8px; border:1px solid #ccc; font-size:1rem;}
+button{background:#007bff;color:white;border:none; cursor:pointer; transition:0.3s;}
+button:hover{background:#0056b3;}
+#reader{width:300px; margin:20px auto; border:1px solid #ccc; border-radius:12px;}
+#msg{margin-top:10px; font-weight:bold;}
+footer{padding:20px; font-size:0.9rem; color:#555;}
+</style>
+</head>
+<body>
+<header>
+<h1>Controle de Estoque</h1>
+</header>
+
+<main>
+<div id="reader"></div>
+
+<label for="cameraSelect">Selecionar câmera:</label>
+<select id="cameraSelect"></select>
+
+<form id="formSaida">
+<label for="produto">Produto:</label>
+<select id="produto" required><option value="">Carregando...</option></select>
+
+<label for="quantidade">Quantidade retirada:</label>
+<input type="number" id="quantidade" required min="1">
+
+<button type="submit">Registrar Saída</button>
+</form>
+
+<div id="msg">Aguardando ação...</div>
+</main>
+
+<footer>&copy; 2025 Sua Empresa</footer>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-ruZpifHI8POPg98c0-vy6R0eJJfJtI4PseDAtkzOfX39UpN4PWMbtIEg7Yv3_XJ-0Q/exec";
+const selectProduto = document.getElementById("produto");
+const cameraSelect = document.getElementById("cameraSelect");
+const msg = document.getElementById("msg");
+let scanner = null;
+
+// Carregar produtos
+async function carregarProdutos() {
+  try {
+    const resp = await fetch(SCRIPT_URL);
+    const produtos = await resp.json();
+    selectProduto.innerHTML="<option value=''>Selecione...</option>";
+    produtos.forEach(p=>{
+      const opt=document.createElement("option");
+      opt.value=p.codigo;
+      opt.textContent=`${p.codigo} - ${p.produto} (Atual: ${p.estoque_atual})`;
+      selectProduto.appendChild(opt);
+    });
+    msg.textContent="Produtos carregados!";
+    msg.style.color="green";
+  } catch(err){
+    selectProduto.innerHTML="<option>Erro ao carregar</option>";
+    msg.textContent="Erro ao carregar produtos!";
+    msg.style.color="red";
+  }
+}
+carregarProdutos();
+
+// Listar câmeras
+Html5Qrcode.getCameras().then(cams=>{
+  if(cams && cams.length){
+    cams.forEach(c=>{
+      const opt=document.createElement("option");
+      opt.value=c.id;
+      opt.textContent=c.label||c.id;
+      cameraSelect.appendChild(opt);
+    });
+    iniciarScanner(cams[0].id);
+  }else{
+    msg.textContent="Nenhuma câmera encontrada!";
+    msg.style.color="red";
+  }
+}).catch(err=>{
+  msg.textContent="Erro ao listar câmeras!";
+  msg.style.color="red";
+  console.error(err);
+});
+
+function iniciarScanner(cameraId){
+  if(scanner){scanner.stop().catch(()=>{});}
+  scanner=new Html5Qrcode("reader");
+  scanner.start(
+    {deviceId:{exact:cameraId}},
+    {fps:10, qrbox:250},
+    qrCodeMessage=>{
+      let encontrado=false;
+      for(let i=0;i<selectProduto.options.length;i++){
+        if(selectProduto.options[i].value===qrCodeMessage){
+          selectProduto.selectedIndex=i;
+          msg.textContent="Produto selecionado: "+qrCodeMessage;
+          msg.style.color="blue";
+          encontrado=true;
+          break;
+        }
+      }
+      if(!encontrado){msg.textContent="QR Code não corresponde a nenhum produto!"; msg.style.color="red";}
+    }
+  ).catch(err=>{msg.textContent="Erro ao iniciar scanner: "+err; msg.style.color="red";});
+}
+
+cameraSelect.addEventListener("change",()=>{iniciarScanner(cameraSelect.value);});
+
+// Registrar saída
+document.getElementById("formSaida").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const codigo=selectProduto.value;
+  const quantidade=document.getElementById("quantidade").value;
+  if(!codigo||!quantidade){msg.textContent="Selecione produto e informe quantidade!"; msg.style.color="red"; return;}
+  try{
+    const params=new URLSearchParams();
+    params.append("codigo",codigo);
+    params.append("retirada",quantidade);
+    const resp=await fetch(SCRIPT_URL,{method:"POST",body:params});
+    const texto=await resp.text();
+    msg.textContent=texto.includes("⚠️")?texto:"Saída registrada com sucesso!";
+    msg.style.color=texto.includes("⚠️")?"red":"green";
+    document.getElementById("formSaida").reset();
+    selectProduto.innerHTML="<option>Carregando...</option>";
+    carregarProdutos();
+  }catch(err){msg.textContent="Erro ao registrar saída!"; msg.style.color="red"; console.error(err);}
+});
+</script>
+</body>
+</html>
