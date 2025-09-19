@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>App Mobile de Retirada - QR Real Time</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb;
+  --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b;
+  --card:#1f2937; --line:#334155;
+}
+body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text);}
+header { display:flex; justify-content:center; align-items:center; padding:16px; background: var(--panel); border-bottom:1px solid var(--line); position: sticky; top:0;}
+header h1 { margin:0; font-size:20px; color:#c7d2fe; }
+main { padding:16px; display:flex; flex-direction:column; gap:16px; max-width:500px; margin:0 auto;}
+label { font-size:14px; color: var(--muted); margin-bottom:4px; }
+input, select, button { width:100%; padding:14px; border-radius:10px; border:1px solid var(--line); background:#0b1220; color:var(--text); font-size:16px; }
+button.action { background: var(--accent); border:none; color:#fff; font-weight:600; cursor:pointer; margin-top:8px; }
+button.action:disabled { opacity:.6; cursor:not-allowed; }
+.scroll { max-height:200px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+table { width:100%; border-collapse: collapse; font-size:14px; }
+th, td { padding:8px; border-bottom:1px solid var(--line); text-align:left; }
+th { background:#1e293b; color:#e2e8f0; position:sticky; top:0; }
+#preview { width:100%; height:300px; border-radius:8px; background:#000; object-fit:cover; }
+#cameraStatus { color: var(--warn); font-size:12px; text-align:center; margin-bottom:8px; }
+</style>
+</head>
+<body>
+<header><h1>App Mobile de Retirada</h1></header>
+<main>
+
+<div>
+  <label>Escanear QR Code em tempo real</label>
+  <video id="preview" autoplay muted playsinline></video>
+  <div id="cameraStatus">Aguardando câmera...</div>
+</div>
+
+<label>Produto</label>
+<select id="produtoSelect"><option value="">Selecione um produto</option></select>
+
+<label>Quantidade</label>
+<input type="number" id="quantidade" min="1" placeholder="Quantidade">
+
+<label>Responsável</label>
+<input type="text" id="responsavel" placeholder="Seu nome">
+
+<button id="btnRetirada" class="action">Registrar Retirada</button>
+
+<h2>Produtos Disponíveis</h2>
+<div class="scroll">
+<table id="tabEstoque">
+  <thead><tr><th>Código</th><th>Produto</th><th>Quantidade</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+
+<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+<script>
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbznjI4fjdIdi9L2hDYZ137bAqG-w_TSM89p1YdkWa8n9y1FtG6vgYJ96gQ9J27CkCTJZA/exec";
+let estoque = [];
+
+// Carregar estoque
+async function fetchStock(){
+  try{
+    const res = await fetch(WEBAPP_URL,{method:"POST",body:JSON.stringify({action:"listStock"})});
+    const data = await res.json();
+    if(data.success){
+      estoque = data.data;
+      const tbody = document.querySelector("#tabEstoque tbody");
+      tbody.innerHTML = "";
+      const select = document.getElementById("produtoSelect");
+      select.innerHTML = '<option value="">Selecione um produto</option>';
+      estoque.forEach(p=>{
+        tbody.innerHTML += `<tr><td>${p.codigo}</td><td>${p.produto}</td><td>${p.quantidade}</td></tr>`;
+        const opt = document.createElement("option");
+        opt.value = p.codigo;
+        opt.textContent = `${p.produto} (${p.codigo})`;
+        select.appendChild(opt);
+      });
+    }
+  }catch(e){
+    console.error("Erro ao carregar estoque:", e);
+    document.getElementById("cameraStatus").textContent = "Erro ao carregar estoque.";
+  }
+}
+
+// Registrar retirada
+async function registrarRetirada(codigoManual){
+  const codigo = codigoManual || document.getElementById("produtoSelect").value;
+  const quantidade = Number(document.getElementById("quantidade").value);
+  const responsavel = document.getElementById("responsavel").value;
+  if(!codigo || !quantidade || !responsavel){
+    alert("Preencha todos os campos!");
+    return;
+  }
+  try{
+    const res = await fetch(WEBAPP_URL,{
+      method:"POST",
+      body: JSON.stringify({action:"retirar",codigo,quantidade,responsavel})
+    });
+    const data = await res.json();
+    if(data.success){
+      alert("Retirada registrada! Novo estoque: "+data.data.novoEstoque);
+      fetchStock();
+      document.getElementById("quantidade").value="";
+      document.getElementById("responsavel").value="";
+    } else alert("Erro: "+data.error);
+  }catch(e){
+    alert("Erro ao registrar retirada: "+e.message);
+  }
+}
+
+document.getElementById("btnRetirada").onclick = ()=>registrarRetirada();
+
+// Scanner em tempo real
+async function startCameraScanner(){
+  const video = document.getElementById("preview");
+  const statusElem = document.getElementById("cameraStatus");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    statusElem.textContent = "Câmera não disponível. Use modo manual.";
+    return;
+  }
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+    video.srcObject = stream;
+    video.play();
+    statusElem.textContent = "Câmera ativa. Aponte para QR Code.";
+
+    const scan = () => {
+      if(video.readyState === video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if(code){
+          const produto = estoque.find(p=>p.codigo===code.data);
+          if(produto){
+            document.getElementById("produtoSelect").value = produto.codigo;
+            registrarRetirada(produto.codigo);
+          }
+        }
+      }
+      requestAnimationFrame(scan);
+    };
+    requestAnimationFrame(scan);
+  } catch(e){
+    statusElem.textContent = "Erro ao acessar câmera. Use modo manual.";
+    console.error(e);
+  }
+}
+
+fetchStock();
+startCameraScanner();
+</script>
+</body>
+</html>
