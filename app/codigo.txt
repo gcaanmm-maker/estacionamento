@@ -1,0 +1,96 @@
+function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  const action = data.action;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  if (action === "listStock") return listStock(ss);
+  if (action === "retirar") return registrarRetirada(data, ss);
+  if (action === "listRelatorio") return listRelatorio(ss);
+
+  return ContentService.createTextOutput(
+    JSON.stringify({ success: false, error: "Ação desconhecida: " + action })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+// 📦 Listar estoque (aba Estoque)
+function listStock(ss) {
+  const sheet = ss.getSheetByName("Estoque");
+  const values = sheet.getDataRange().getValues();
+  const headers = values.shift();
+
+  const idxCodigo = headers.indexOf("Código");
+  const idxProduto = headers.indexOf("Produto");
+  const idxQtd = headers.indexOf("Quantidade Atual");
+  const idxMin = headers.indexOf("Estoque Mínimo");
+
+  const items = values.map(r => ({
+    codigo: r[idxCodigo],
+    produto: r[idxProduto],
+    quantidade: Number(r[idxQtd]) || 0,
+    minimo: Number(r[idxMin]) || 0,
+  }));
+
+  return ContentService.createTextOutput(JSON.stringify({ success: true, data: items }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ➖ Registrar retirada (aba Retiradas e Relatorio)
+function registrarRetirada(data, ss) {
+  const estoqueSheet = ss.getSheetByName("Estoque");
+  const retiradasSheet = ss.getSheetByName("Retiradas");
+  const relatorioSheet = ss.getSheetByName("Relatorio");
+
+  const values = estoqueSheet.getDataRange().getValues();
+  const headers = values.shift();
+  const idxCodigo = headers.indexOf("Código");
+  const idxProduto = headers.indexOf("Produto");
+  const idxQtd = headers.indexOf("Quantidade Atual");
+
+  const rowIndex = values.findIndex(r => String(r[idxCodigo]) === String(data.codigo));
+  if (rowIndex === -1)
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Produto não encontrado" }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  let qtdAtual = Number(values[rowIndex][idxQtd]) || 0;
+  qtdAtual -= Number(data.quantidade);
+  if (qtdAtual < 0) qtdAtual = 0;
+
+  // Atualizar estoque
+  estoqueSheet.getRange(rowIndex + 2, idxQtd + 1).setValue(qtdAtual);
+
+  const produto = values[rowIndex][idxProduto];
+  const now = new Date();
+
+  // Registrar em Retiradas
+  retiradasSheet.appendRow([data.codigo, produto, Number(data.quantidade), data.responsavel, now]);
+
+  // Registrar também em Relatorio
+  relatorioSheet.appendRow([data.codigo, produto, Number(data.quantidade), data.responsavel, now]);
+
+  return ContentService.createTextOutput(JSON.stringify({ success: true, data: { novoEstoque: qtdAtual } }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 📑 Listar relatório (aba Relatorio)
+function listRelatorio(ss) {
+  const sheet = ss.getSheetByName("Relatorio");
+  const values = sheet.getDataRange().getValues();
+  const headers = values.shift();
+
+  const idxCodigo = headers.indexOf("Código");
+  const idxProduto = headers.indexOf("Produto");
+  const idxQtd = headers.indexOf("Quantidade Retirada");
+  const idxResp = headers.indexOf("Nome do Responsável");
+  const idxData = headers.indexOf("Data e Hora");
+
+  const items = values.map(r => ({
+    codigo: r[idxCodigo],
+    produto: r[idxProduto],
+    quantidade: Number(r[idxQtd]) || 0,
+    responsavel: r[idxResp],
+    datahora: r[idxData] instanceof Date ? r[idxData].getTime() : null,
+  }));
+
+  return ContentService.createTextOutput(JSON.stringify({ success: true, data: items }))
+    .setMimeType(ContentService.MimeType.JSON);
+}

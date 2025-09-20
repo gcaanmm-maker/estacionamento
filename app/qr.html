@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>QR Codes Estoque - PDF Estilizado</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+:root {
+  --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb;
+  --accent:#22c55e; --line:#334155;
+}
+body { margin:0; font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--text);}
+header { padding:16px; text-align:center; background: var(--panel); border-bottom:1px solid var(--line);}
+header h1 { margin:0; color:#c7d2fe; }
+#grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; padding:16px;}
+.qr-card {
+    background:#1f2937;
+    padding:8px;
+    border:2px solid var(--line);
+    border-radius:12px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+.qr-card:hover { 
+    transform: translateY(-2px); 
+    border-color: var(--accent); 
+    box-shadow: 0 6px 10px rgba(0,0,0,0.5);
+}
+.qr-card.selected { border-color: var(--accent); box-shadow: 0 8px 12px rgba(0,0,0,0.6); }
+.qr-card canvas { margin-bottom:8px; }
+.qr-card .info { text-align:center; font-size:13px; color: var(--text); font-weight:600; white-space: pre-wrap;}
+button.action {
+    background: var(--accent); 
+    border:none; 
+    color:#fff; 
+    font-weight:600; 
+    cursor:pointer; 
+    padding:10px 16px; 
+    border-radius:8px; 
+    margin:16px auto; 
+    display:block;
+    transition: background 0.2s;
+}
+button.action:hover { background:#1fb85e; }
+</style>
+</head>
+<body>
+<header>
+  <h1>QR Codes Estoque - PDF Estilizado</h1>
+  <button id="btnPDF" class="action">Baixar QR Codes Selecionados</button>
+</header>
+<div id="grid">Carregando QR Codes...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbznjI4fjdIdi9L2hDYZ137bAqG-w_TSM89p1YdkWa8n9y1FtG6vgYJ96gQ9J27CkCTJZA/exec";
+const grid = document.getElementById("grid");
+let produtos = [];
+
+// Gerar QR Codes na tela
+async function gerarQRCodes() {
+    grid.innerHTML = "Carregando QR Codes...";
+    try {
+        const res = await fetch(WEBAPP_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "listStock" })
+        });
+        const data = await res.json();
+        if (!data.success || !Array.isArray(data.data) || data.data.length===0) {
+            grid.innerHTML = "Nenhum produto encontrado!";
+            return;
+        }
+        produtos = data.data;
+        grid.innerHTML = "";
+
+        for (const p of produtos) {
+            const card = document.createElement("div");
+            card.className = "qr-card";
+
+            const canvas = document.createElement("canvas");
+            await QRCode.toCanvas(canvas, p.codigo.toString(), { width: 120, margin:2 });
+
+            const label = document.createElement("div");
+            label.className = "info";
+            label.textContent = `${p.codigo}\n${p.produto}`;
+
+            card.appendChild(canvas);
+            card.appendChild(label);
+            grid.appendChild(card);
+
+            card.onclick = () => card.classList.toggle("selected");
+        }
+    } catch(e){
+        grid.innerHTML = "Erro ao carregar produtos!";
+        console.error(e);
+    }
+}
+
+// Baixar PDF com QR Codes estilizados
+async function baixarPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({unit:"pt", format:"a4"});
+    const cards = document.querySelectorAll(".qr-card.selected canvas");
+
+    if(cards.length===0){ alert("Selecione pelo menos um QR Code."); return; }
+
+    const pageWidth = 595; // A4 pt
+    const pageHeight = 842;
+    const cols = 4, rows = 8;
+    const paddingX = 20, paddingY = 20;
+    const cellW = (pageWidth - (cols+1)*paddingX)/cols;
+    const cellH = cellW + 40; // espaço para texto
+
+    let x = paddingX, y = paddingY, col=0, row=0;
+
+    for(const canvas of cards){
+        const imgData = canvas.toDataURL("image/png");
+
+        // Fundo e borda estilizados
+        pdf.setFillColor(30,41,55); // fundo escuro
+        pdf.roundedRect(x, y, cellW, cellH, 8, 8, 'FD'); // F=fill D=stroke
+
+        // Inserir QR Code centralizado
+        const qrSize = cellW-20;
+        pdf.addImage(imgData,'PNG', x+10, y+10, qrSize, qrSize);
+
+        // Inserir label abaixo
+        const label = canvas.nextSibling.innerText.split("\n");
+        pdf.setFontSize(10);
+        pdf.setTextColor(255,255,255);
+        pdf.text(label[0], x+cellW/2, y+qrSize+22, {align:"center"});
+        pdf.text(label[1], x+cellW/2, y+qrSize+34, {align:"center"});
+
+        col++;
+        x += cellW + paddingX;
+        if(col % cols === 0){ col=0; x=paddingX; row++; y += cellH + paddingY; }
+        if(row % rows === 0 && col===0 && cards.length>0){ pdf.addPage(); y=paddingY; row=0; }
+    }
+    pdf.save("qrcodes_estilizado.pdf");
+}
+
+document.getElementById("btnPDF").onclick = baixarPDF;
+window.onload = gerarQRCodes;
+</script>
+</body>
+</html>
